@@ -7,9 +7,13 @@
 from DIRAC.Core.Base.Script import parseCommandLine
 parseCommandLine()
 
-import unittest
+import unittest, os
 
 from DIRAC.TransformationSystem.Client.TransformationClient   import TransformationClient
+
+from DIRAC.Resources.Catalog.FileCatalog import FileCatalog
+from DIRAC.Resources.Catalog.FileCatalogClient import FileCatalogClient
+from DIRAC.DataManagementSystem.Client.DataManager import DataManager
 
 class TestClientTransformationTestCase( unittest.TestCase ):
 
@@ -222,6 +226,147 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.transClient.cleanTransformation( transID )
     self.transClient.deleteTransformation( transID )
 
+  def test_inputDataQueries( self ):
+
+    # ## Add metadata fields to the DFC
+    fcc = FileCatalogClient()
+    MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fcc.addMetadataField( MDField, MDFieldType )
+      self.assert_( res['OK'] )
+
+    # ## Create a directory in the DFC and set the directory metadata
+    dirpath1 = '/dir1'
+    res = fcc.createDirectory( dirpath1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][dirpath1], True )
+
+    MDdict1 = {'particle':'gamma_diffuse', 'zenith':20}
+    res = fcc.setMetadata( dirpath1 , MDdict1 )
+    self.assert_( res['OK'] )
+
+#### Add a first file to the DFC and TS Catalog
+    filename = 'file1'
+    lfn1 = os.path.join( dirpath1, filename )
+    fileTuple = ( lfn1, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
+
+    dm = DataManager( catalogs = ['DIRACFileCatalog', 'TSCatalog'] )
+    res = dm.registerFile( fileTuple )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )
+
+# ## Create a transformation
+    transClient = TransformationClient()
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', '' )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Add a query to the transformation that matches the file metadata
+    res = transClient.createTransformationInputDataQuery( transID, MDdict1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'] , 1 )
+
+    # ## Verify that the created file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # # Add a second file to the DFC and TS Catalog having the same metadata
+    filename = 'file2'
+    lfn2 = os.path.join( dirpath1, filename )
+    fileTuple = ( lfn2, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
+    res = dm.registerFile( fileTuple )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn2]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn2]['TSCatalog'], True )
+
+    # ## Verify that the second file has been automatically added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID': transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][1]['LFN'], lfn2 )
+
+    #### Add a third file to the DFC and TS Catalog having a different metadata set not matching the transformation query
+    dirpath2 = '/dir2'
+    res = fcc.createDirectory( dirpath2 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][dirpath2], True )
+
+    MDdict2 = {'particle':'gamma_diffuse', 'zenith':40}
+    res = fcc.setMetadata( dirpath2 , MDdict2 )
+    self.assert_( res['OK'] )
+
+    fileName = 'file3'
+    lfn3 = os.path.join( dirpath2, fileName )
+    fileTuple = ( lfn3, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
+    res = dm.registerFile( fileTuple )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn3]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn3]['TSCatalog'], False )
+
+    # ## Verify that the third file has not been added to the the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    for ires in res['Value']:
+      self.assertNotEqual( ires['LFN'], lfn3 )
+
+    # ## Delete the TransformationInputDataQuery
+    res = transClient.deleteTransformationInputDataQuery( transID )
+    self.assert_( res['OK'] )
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', '' )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+# ## Add a query to the transformation that does not match none of the metadata of the files added to the DFC
+    MDdict3 = {'particle':'gamma', 'zenith':60}
+    res = transClient.createTransformationInputDataQuery( transID, MDdict3 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'] , 1 )
+
+# ## Verify that no files have been added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assertEqual( len( res['Value'] ) , 0 )
+
+    # ## Delete the TransformationInputDataQuery
+    res = transClient.deleteTransformationInputDataQuery( transID )
+    self.assert_( res['OK'] )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+############################
+
+# # Remove files from both Catalogs
+    fc = FileCatalog( ['DIRACFileCatalog', 'TSCatalog'] )
+    res = fc.removeFile( lfn1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], True )
+    res = fc.removeFile( lfn2 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn2]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn2]['TSCatalog'], True )
+    res = fc.removeFile( lfn3 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn3]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn3]['TSCatalog'], 'File did not exist' )
+
+# # Remove directories from  both Catalogs
+    dirlist = [dirpath1, dirpath2]
+    res = fc.removeDirectory( dirlist )
+    self.assert_( res['OK'] )
+
+# # Remove metadata fields from DFC
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fcc.deleteMetadataField( MDField )
+      self.assert_( res['OK'] )
 
 if __name__ == '__main__':
   suite = unittest.defaultTestLoader.loadTestsFromTestCase( TestClientTransformationTestCase )

@@ -12,7 +12,6 @@ import unittest, os
 from DIRAC.TransformationSystem.Client.TransformationClient   import TransformationClient
 
 from DIRAC.Resources.Catalog.FileCatalog import FileCatalog
-from DIRAC.Resources.Catalog.FileCatalogClient import FileCatalogClient
 from DIRAC.DataManagementSystem.Client.DataManager import DataManager
 
 class TestClientTransformationTestCase( unittest.TestCase ):
@@ -229,21 +228,22 @@ class TransformationClientChain( TestClientTransformationTestCase ):
   def test_inputDataQueries( self ):
 
     # ## Add metadata fields to the DFC
-    fcc = FileCatalogClient()
+    fc = FileCatalog()
     MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
     for MDField in MDFieldDict.keys():
       MDFieldType = MDFieldDict[MDField]
-      res = fcc.addMetadataField( MDField, MDFieldType )
+      res = fc.addMetadataField( MDField, MDFieldType )
       self.assert_( res['OK'] )
 
     # ## Create a directory in the DFC and set the directory metadata
     dirpath1 = '/dir1'
-    res = fcc.createDirectory( dirpath1 )
+    res = fc.createDirectory( dirpath1 )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][dirpath1], True )
+    self.assertEqual( res['Value']['Successful'][dirpath1]['TSCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath1]['DIRACFileCatalog'], True )
 
     MDdict1 = {'particle':'gamma_diffuse', 'zenith':20}
-    res = fcc.setMetadata( dirpath1 , MDdict1 )
+    res = fc.setMetadata( dirpath1 , MDdict1 )
     self.assert_( res['OK'] )
 
 #### Add a first file to the DFC and TS Catalog
@@ -252,6 +252,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     fileTuple = ( lfn1, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
 
     dm = DataManager( catalogs = ['DIRACFileCatalog', 'TSCatalog'] )
+    # dm = DataManager( masterCatalogOnly = True )
     res = dm.registerFile( fileTuple )
     self.assert_( res['OK'] )
     self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
@@ -278,6 +279,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     lfn2 = os.path.join( dirpath1, filename )
     fileTuple = ( lfn2, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
     res = dm.registerFile( fileTuple )
+    print res
     self.assert_( res['OK'] )
     self.assertEqual( res['Value']['Successful'][lfn2]['DIRACFileCatalog'], True )
     self.assertEqual( res['Value']['Successful'][lfn2]['TSCatalog'], True )
@@ -289,12 +291,13 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
     #### Add a third file to the DFC and TS Catalog having a different metadata set not matching the transformation query
     dirpath2 = '/dir2'
-    res = fcc.createDirectory( dirpath2 )
+    res = fc.createDirectory( dirpath2 )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][dirpath2], True )
+    self.assertEqual( res['Value']['Successful'][dirpath2]['TSCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath2]['DIRACFileCatalog'], True )
 
     MDdict2 = {'particle':'gamma_diffuse', 'zenith':40}
-    res = fcc.setMetadata( dirpath2 , MDdict2 )
+    res = fc.setMetadata( dirpath2 , MDdict2 )
     self.assert_( res['OK'] )
 
     fileName = 'file3'
@@ -343,7 +346,6 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 ############################
 
 # # Remove files from both Catalogs
-    fc = FileCatalog( ['DIRACFileCatalog', 'TSCatalog'] )
     res = fc.removeFile( lfn1 )
     self.assert_( res['OK'] )
     self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
@@ -365,7 +367,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 # # Remove metadata fields from DFC
     for MDField in MDFieldDict.keys():
       MDFieldType = MDFieldDict[MDField]
-      res = fcc.deleteMetadataField( MDField )
+      res = fc.deleteMetadataField( MDField )
       self.assert_( res['OK'] )
 
 if __name__ == '__main__':

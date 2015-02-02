@@ -2,6 +2,7 @@
     TransformationClient -> TransformationManagerHandler -> TransformationDB
 
     It supposes that the DB is present, and that the service is running
+    The test_inputDataQueries also requires that a MetaCatalog is running
 """
 
 from DIRAC.Core.Base.Script import parseCommandLine
@@ -227,8 +228,13 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
   def test_inputDataQueries( self ):
 
-    # ## Add metadata fields to the DFC
+    # ## Check that there is one MetaCatalog defined
     fc = FileCatalog()
+    res = fc.metaCatalogs
+    self.assertEqual( len( res ), 1 )
+    metaCatalog = res[0]
+
+    # ## Add metadata fields to the DFC
     MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
     for MDField in MDFieldDict.keys():
       MDFieldType = MDFieldDict[MDField]
@@ -240,7 +246,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     res = fc.createDirectory( dirpath1 )
     self.assert_( res['OK'] )
     self.assertEqual( res['Value']['Successful'][dirpath1]['TSCatalog'], True )
-    self.assertEqual( res['Value']['Successful'][dirpath1]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath1][metaCatalog], True )
 
     MDdict1 = {'particle':'gamma_diffuse', 'zenith':20}
     res = fc.setMetadata( dirpath1 , MDdict1 )
@@ -251,11 +257,10 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     lfn1 = os.path.join( dirpath1, filename )
     fileTuple = ( lfn1, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
 
-    dm = DataManager( catalogs = ['DIRACFileCatalog', 'TSCatalog'] )
-    # dm = DataManager( masterCatalogOnly = True )
+    dm = DataManager()
     res = dm.registerFile( fileTuple )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )
 
 # ## Create a transformation
@@ -279,9 +284,8 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     lfn2 = os.path.join( dirpath1, filename )
     fileTuple = ( lfn2, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
     res = dm.registerFile( fileTuple )
-    print res
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn2]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn2][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn2]['TSCatalog'], True )
 
     # ## Verify that the second file has been automatically added to the transformation
@@ -294,7 +298,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     res = fc.createDirectory( dirpath2 )
     self.assert_( res['OK'] )
     self.assertEqual( res['Value']['Successful'][dirpath2]['TSCatalog'], True )
-    self.assertEqual( res['Value']['Successful'][dirpath2]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath2][metaCatalog], True )
 
     MDdict2 = {'particle':'gamma_diffuse', 'zenith':40}
     res = fc.setMetadata( dirpath2 , MDdict2 )
@@ -305,7 +309,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     fileTuple = ( lfn3, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
     res = dm.registerFile( fileTuple )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn3]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn3][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn3]['TSCatalog'], False )
 
     # ## Verify that the third file has not been added to the the transformation
@@ -348,15 +352,15 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 # # Remove files from both Catalogs
     res = fc.removeFile( lfn1 )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn1]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], True )
     res = fc.removeFile( lfn2 )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn2]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn2][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn2]['TSCatalog'], True )
     res = fc.removeFile( lfn3 )
     self.assert_( res['OK'] )
-    self.assertEqual( res['Value']['Successful'][lfn3]['DIRACFileCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][lfn3][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn3]['TSCatalog'], 'File did not exist' )
 
 # # Remove directories from  both Catalogs

@@ -8,7 +8,7 @@
 from DIRAC.Core.Base.Script import parseCommandLine
 parseCommandLine()
 
-import unittest, os
+import unittest, os, json
 
 from DIRAC.TransformationSystem.Client.TransformationClient   import TransformationClient
 
@@ -263,16 +263,13 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
     self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )
 
-# ## Create a transformation
+# ## Create a transformation having a query that matches the file metadata
     transClient = TransformationClient()
-    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', '' )
+    MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}}
+    mqJson1b = json.dumps( MDdict1b )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
     self.assert_( res['OK'] )
     transID = res['Value']
-
-    # ## Add a query to the transformation that matches the file metadata
-    res = transClient.createTransformationInputDataQuery( transID, MDdict1 )
-    self.assert_( res['OK'] )
-    self.assertEqual( res['Value'] , 1 )
 
     # ## Verify that the created file is added to the transformation
     res = transClient.getTransformationFiles( {'TransformationID':transID} )
@@ -304,7 +301,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     res = fc.setMetadata( dirpath2 , MDdict2 )
     self.assert_( res['OK'] )
 
-    fileName = 'file3'
+    fileName = 'file4'
     lfn3 = os.path.join( dirpath2, fileName )
     fileTuple = ( lfn3, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
     res = dm.registerFile( fileTuple )
@@ -318,31 +315,34 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     for ires in res['Value']:
       self.assertNotEqual( ires['LFN'], lfn3 )
 
-    # ## Delete the TransformationInputDataQuery
-    res = transClient.deleteTransformationInputDataQuery( transID )
-    self.assert_( res['OK'] )
     # ## Delete the transformation"
     res = transClient.deleteTransformation( transID )
     self.assert_( res['OK'] )
 
-    # ## Create another transformation
-    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', '' )
+    # ## Create another transformation having a query not matching none of the files added to the DFC
+    MDdict3 = {'particle':'gamma', 'zenith':60}
+    mqJson3 = json.dumps( MDdict3 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson3 )
     self.assert_( res['OK'] )
     transID = res['Value']
-
-# ## Add a query to the transformation that does not match none of the metadata of the files added to the DFC
-    MDdict3 = {'particle':'gamma', 'zenith':60}
-    res = transClient.createTransformationInputDataQuery( transID, MDdict3 )
-    self.assert_( res['OK'] )
-    self.assertEqual( res['Value'] , 1 )
 
 # ## Verify that no files have been added to the transformation
     res = transClient.getTransformationFiles( {'TransformationID':transID} )
     self.assertEqual( len( res['Value'] ) , 0 )
 
-    # ## Delete the TransformationInputDataQuery
-    res = transClient.deleteTransformationInputDataQuery( transID )
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
     self.assert_( res['OK'] )
+############################
+
+    # ## Create another transformation having an empty query
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', '' )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+# ## Verify that no files have been added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assertEqual( len( res['Value'] ) , 0 )
 
     # ## Delete the transformation"
     res = transClient.deleteTransformation( transID )

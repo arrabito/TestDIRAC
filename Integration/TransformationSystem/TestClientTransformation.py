@@ -2,7 +2,16 @@
     TransformationClient -> TransformationManagerHandler -> TransformationDB
 
     It supposes that the DB is present, and that the service is running
-    The test_inputDataQueries also requires that a MetaCatalog is running
+    The test_inputDataQueries also requires that a Catalog service is running and that it configured with 'MetaCatalog = True' in the CS, e.g.:
+
+    Resources
+    {
+     FileCatalogs
+     {
+      DIRACFileCatalog
+       {
+        MetaCatalog = True
+        ...
 """
 
 from DIRAC.Core.Base.Script import parseCommandLine

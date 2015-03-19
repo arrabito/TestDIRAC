@@ -235,6 +235,192 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.transClient.cleanTransformation( transID )
     self.transClient.deleteTransformation( transID )
 
+  def test_inputDataQuerieswithReplicas( self ):
+    # ## Check that there is one MetaCatalog defined
+    fc = FileCatalog()
+    res = fc.metaCatalogs
+    self.assertEqual( len( res ), 1 )
+    metaCatalog = res[0]
+
+    # ## Add metadata fields to the DFC
+    MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fc.addMetadataField( MDField, MDFieldType )
+      self.assert_( res['OK'] )
+
+    # ## Create a directory in the DFC and set the directory metadata
+    dirpath1 = '/dir1'
+    res = fc.createDirectory( dirpath1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][dirpath1]['TSCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath1][metaCatalog], True )
+
+    MDdict1 = {'particle':'gamma_diffuse', 'zenith':20}
+    res = fc.setMetadata( dirpath1 , MDdict1 )
+    self.assert_( res['OK'] )
+
+    #### Add a first file to the DFC and TS Catalog
+    filename = 'file1'
+    lfn1 = os.path.join( dirpath1, filename )
+    fileTuple = ( lfn1, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
+
+    dm = DataManager()
+    res = dm.registerFile( fileTuple )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )
+
+# ## Create a transformation having a query with replica location requirement that matches the file location
+    transClient = TransformationClient()
+    MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':'ALPHA-Disk'}
+    mqJson1b = json.dumps( MDdict1b )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the created file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # # Add a replica of the file with location not matching the transformation query
+    replicaDict = {lfn1: {'SE': 'BETA-Disk', 'PFN': 'dips://beta:9148/DataManagement/StorageElement/dir1/file1'}}
+    res = fc.addReplica( replicaDict )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )  # since there are no matching transformations
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation having a query with replica location not matching none of the replicas added to the DFC
+    MDdict3 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':'GAMMA-Disk'}
+    mqJson3 = json.dumps( MDdict3 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson3 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+# ## Verify that no files have been added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assertEqual( len( res['Value'] ) , 0 )
+
+    # # Add a replica of the file to a location matching the transformation query
+    replicaDict = {lfn1: {'SE': 'GAMMA-Disk', 'PFN': 'dips://gamma:9148/DataManagement/StorageElement/dir1/file1'}}
+    res = fc.addReplica( replicaDict )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], True )  # since there is a matching transformation
+
+    # ## Verify that the file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+############################
+
+######## Verify the other operators: not equal, in, not in
+
+    # ## Create another transformation having a query with replica using not equal operator and matching the condition
+    MDdict4 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':{'!=':'ALPHA-Disk'}}
+    mqJson4 = json.dumps( MDdict4 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson4 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation having a query with replica using in operator and matching the condition
+    MDdict5 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':{'in': ['ALPHA-Disk', 'BETA-Disk']}}
+    mqJson5 = json.dumps( MDdict5 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson5 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation having a query with replica using in operator and not matching the condition
+    MDdict6 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':{'in': ['DELTA-Disk', 'EPSILON-Disk']}}
+    mqJson6 = json.dumps( MDdict6 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson6 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+# ## Verify that no files have been added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assertEqual( len( res['Value'] ) , 0 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation having a query with replica using not in operator and matching the condition
+    MDdict7 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':{'nin': ['DELTA-Disk', 'EPSILON-Disk']}}
+    mqJson7 = json.dumps( MDdict7 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson7 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the file is added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create another transformation having a query with replica using not in operator and not matching the condition
+    MDdict8 = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}, 'SE':{'nin': ['ALPHA-Disk', 'BETA-Disk', 'GAMMA-Disk']}}
+    mqJson8 = json.dumps( MDdict8 )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson8 )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that no files have been added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assertEqual( len( res['Value'] ) , 0 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+# # Remove files from both Catalogs
+    res = fc.removeFile( lfn1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], True )
+
+# # Remove directories from  both Catalogs
+    dirlist = [dirpath1]
+    res = fc.removeDirectory( dirlist )
+    self.assert_( res['OK'] )
+
+# # Remove metadata fields from DFC
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fc.deleteMetadataField( MDField )
+      self.assert_( res['OK'] )
+
+
   def test_inputDataQueries( self ):
 
     # ## Check that there is one MetaCatalog defined
@@ -277,6 +463,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}}
     mqJson1b = json.dumps( MDdict1b )
     res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
+    print res
     self.assert_( res['OK'] )
     transID = res['Value']
 

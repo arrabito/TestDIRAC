@@ -420,7 +420,6 @@ class TransformationClientChain( TestClientTransformationTestCase ):
       res = fc.deleteMetadataField( MDField )
       self.assert_( res['OK'] )
 
-
   def test_inputDataQueries( self ):
 
     # ## Check that there is one MetaCatalog defined
@@ -463,7 +462,6 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}}
     mqJson1b = json.dumps( MDdict1b )
     res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
-    print res
     self.assert_( res['OK'] )
     transID = res['Value']
 
@@ -561,6 +559,88 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
 # # Remove directories from  both Catalogs
     dirlist = [dirpath1, dirpath2]
+    res = fc.removeDirectory( dirlist )
+    self.assert_( res['OK'] )
+
+# # Remove metadata fields from DFC
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fc.deleteMetadataField( MDField )
+      self.assert_( res['OK'] )
+
+  def test_setMetadata( self ):
+
+    # ## Check that there is one MetaCatalog defined
+    fc = FileCatalog()
+    res = fc.metaCatalogs
+    self.assertEqual( len( res ), 1 )
+    metaCatalog = res[0]
+
+    # ## Add metadata fields to the DFC
+    MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
+    for MDField in MDFieldDict.keys():
+      MDFieldType = MDFieldDict[MDField]
+      res = fc.addMetadataField( MDField, MDFieldType )
+      self.assert_( res['OK'] )
+
+    # ## Create a directory in the DFC and set the directory metadata
+    dirpath1 = '/dir1'
+    res = fc.createDirectory( dirpath1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][dirpath1]['TSCatalog'], True )
+    self.assertEqual( res['Value']['Successful'][dirpath1][metaCatalog], True )
+
+    MDdict1 = {'particle':'gamma_diffuse'}
+    res = fc.setMetadata( dirpath1 , MDdict1 )
+    self.assert_( res['OK'] )
+
+#### Add a first file to the DFC and TS Catalog
+    filename = 'file1'
+    lfn1 = os.path.join( dirpath1, filename )
+    fileTuple = ( lfn1, 'destUrl', 0, 'ALPHA-Disk', 'D41D8CD9-8F00-B204-E980-0998ECF8427E', '001' )
+
+    dm = DataManager()
+    res = dm.registerFile( fileTuple )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], False )
+
+# ## Create a transformation having a query that does not match the file metadata
+    transClient = TransformationClient()
+    MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}}
+    mqJson1b = json.dumps( MDdict1b )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the created file is NOT added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    for ires in res['Value']:
+      self.assertNotEqual( ires['LFN'], lfn1 )
+
+    # ## SetMetadata so that the metadata matches the transformation
+    MDdict2 = {'zenith':20}
+    res = fc.setMetadata( lfn1 , MDdict2 )
+    self.assert_( res['OK'] )
+
+    # ## Verify that the file has been automatically added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID': transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+# # Remove files from both Catalogs
+    res = fc.removeFile( lfn1 )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value']['Successful'][lfn1][metaCatalog], True )
+    self.assertEqual( res['Value']['Successful'][lfn1]['TSCatalog'], True )
+
+# # Remove directories from  both Catalogs
+    dirlist = [dirpath1]
     res = fc.removeDirectory( dirlist )
     self.assert_( res['OK'] )
 

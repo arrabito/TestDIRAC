@@ -416,7 +416,6 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
 # # Remove metadata fields from DFC
     for MDField in MDFieldDict.keys():
-      MDFieldType = MDFieldDict[MDField]
       res = fc.deleteMetadataField( MDField )
       self.assert_( res['OK'] )
 
@@ -428,7 +427,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.assertEqual( len( res ), 1 )
     metaCatalog = res[0]
 
-    # ## Add metadata fields to the DFC
+    # ## Add metadata fields to the DFC (directory level)
     MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
     for MDField in MDFieldDict.keys():
       MDFieldType = MDFieldDict[MDField]
@@ -564,7 +563,6 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
 # # Remove metadata fields from DFC
     for MDField in MDFieldDict.keys():
-      MDFieldType = MDFieldDict[MDField]
       res = fc.deleteMetadataField( MDField )
       self.assert_( res['OK'] )
 
@@ -576,11 +574,18 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.assertEqual( len( res ), 1 )
     metaCatalog = res[0]
 
-    # ## Add metadata fields to the DFC
+    # ## Add metadata fields to the DFC (directory level)
     MDFieldDict = {'particle':'VARCHAR(128)', 'zenith':'int'}
     for MDField in MDFieldDict.keys():
       MDFieldType = MDFieldDict[MDField]
       res = fc.addMetadataField( MDField, MDFieldType )
+      self.assert_( res['OK'] )
+
+    # ## Add metadata fields to the DFC (file level)
+    FileMDFieldDict = {'Nevents':'int'}
+    for MDField in FileMDFieldDict.keys():
+      MDFieldType = FileMDFieldDict[MDField]
+      res = fc.addMetadataField( MDField, MDFieldType, '-f' )
       self.assert_( res['OK'] )
 
     # ## Create a directory in the DFC and set the directory metadata
@@ -607,7 +612,7 @@ class TransformationClientChain( TestClientTransformationTestCase ):
 
 # ## Create a transformation having a query that does not match the file metadata
     transClient = TransformationClient()
-    MDdict1b = {'particle':'gamma_diffuse', 'zenith':{"<=": 20}}
+    MDdict1b = {'particle':'gamma_diffuse', 'Nevents':{"<=": 100}}
     mqJson1b = json.dumps( MDdict1b )
     res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
     self.assert_( res['OK'] )
@@ -619,9 +624,37 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     for ires in res['Value']:
       self.assertNotEqual( ires['LFN'], lfn1 )
 
-    # ## SetMetadata so that the metadata matches the transformation
-    MDdict2 = {'zenith':20}
+    # ## SetMetadata at File Level so that the metadata matches the transformation
+    MDdict2 = {'Nevents':20}
     res = fc.setMetadata( lfn1 , MDdict2 )
+    self.assert_( res['OK'] )
+
+    # ## Verify that the file has been automatically added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID': transID} )
+    self.assert_( res['OK'] )
+    self.assertEqual( res['Value'][0]['LFN'], lfn1 )
+
+    # ## Delete the transformation"
+    res = transClient.deleteTransformation( transID )
+    self.assert_( res['OK'] )
+
+    # ## Create a transformation having a query NOT matching the file metadata
+    transClient = TransformationClient()
+    MDdict1b = {'particle':'gamma_diffuse', 'zenith':10}
+    mqJson1b = json.dumps( MDdict1b )
+    res = transClient.addTransformation( 'transformationName', 'description', 'longDescription', 'MCSimulation', 'Standard', 'Manual', mqJson1b )
+    self.assert_( res['OK'] )
+    transID = res['Value']
+
+    # ## Verify that the file contained in the directory is NOT added to the transformation
+    res = transClient.getTransformationFiles( {'TransformationID':transID} )
+    self.assert_( res['OK'] )
+    for ires in res['Value']:
+      self.assertNotEqual( ires['LFN'], lfn1 )
+
+    # ## SetMetadata at Directory Level so that the metadata matches the transformation
+    MDdict3 = {'zenith':10}
+    res = fc.setMetadata( dirpath1 , MDdict3 )
     self.assert_( res['OK'] )
 
     # ## Verify that the file has been automatically added to the transformation
@@ -645,8 +678,8 @@ class TransformationClientChain( TestClientTransformationTestCase ):
     self.assert_( res['OK'] )
 
 # # Remove metadata fields from DFC
+    MDFieldDict.update( FileMDFieldDict )
     for MDField in MDFieldDict.keys():
-      MDFieldType = MDFieldDict[MDField]
       res = fc.deleteMetadataField( MDField )
       self.assert_( res['OK'] )
 
